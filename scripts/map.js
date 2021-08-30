@@ -1,9 +1,8 @@
 $(window).on('load', function() {
   var documentSettings = {};
-  var markerColors = [];
+  var group2color = {};
 
   var polygonSettings = [];
-  var polygonSheets = 1;
   var polygonsLegend;
 
   var completePoints = false;
@@ -67,28 +66,30 @@ $(window).on('load', function() {
    * column in the spreadsheet.
    */
   function determineLayers(points) {
-    var layerNamesFromSpreadsheet = [];
+    var groups = [];
     var layers = {};
+
     for (var i in points) {
-      var pointLayerNameFromSpreadsheet = points[i].Group;
-      if (layerNamesFromSpreadsheet.indexOf(pointLayerNameFromSpreadsheet) === -1) {
-        markerColors.push(
-          points[i]['Marker Icon'].indexOf('.') > 0
+      var group = points[i].Group;
+      if (group && groups.indexOf(group) === -1) {
+        // Add group to groups
+        groups.push(group);
+
+        // Add color to the crosswalk
+        group2color[ group ] = points[i]['Marker Icon'].indexOf('.') > 0
           ? points[i]['Marker Icon']
-          : points[i]['Marker Color']
-        );
-        layerNamesFromSpreadsheet.push(pointLayerNameFromSpreadsheet);
+          : points[i]['Marker Color'];
       }
     }
 
-    // if none of the points have named layers or if there was only one name, return no layers
-    if (layerNamesFromSpreadsheet.length === 1) {
+    // if none of the points have named layers, return no layers
+    if (groups.length === 0) {
       layers = undefined;
     } else {
-      for (var i in layerNamesFromSpreadsheet) {
-        var layerNameFromSpreadsheet = layerNamesFromSpreadsheet[i];
-        layers[layerNameFromSpreadsheet] = L.layerGroup();
-        layers[layerNameFromSpreadsheet].addTo(map);
+      for (var i in groups) {
+        var name = groups[i];
+        layers[name] = L.layerGroup();
+        layers[name].addTo(map);
       }
     }
     return layers;
@@ -107,8 +108,8 @@ $(window).on('load', function() {
       // otherwise create a Font Awesome icon
       var iconSize = point['Custom Size'];
       var size = (iconSize.indexOf('x') > 0)
-      ? [parseInt(iconSize.split('x')[0]), parseInt(iconSize.split('x')[1])]
-      : [32, 32];
+        ? [parseInt(iconSize.split('x')[0]), parseInt(iconSize.split('x')[1])]
+        : [32, 32];
 
       var anchor = [size[0] / 2, size[1]];
 
@@ -170,7 +171,6 @@ $(window).on('load', function() {
       });
 
       if (getSetting('_pointsLegendPos') !== 'off') {
-        //console.log(pointsLegend)
         pointsLegend.addTo(map);
         pointsLegend._container.id = 'points-legend';
         pointsLegend._container.className += ' ladder';
@@ -179,7 +179,7 @@ $(window).on('load', function() {
 
     $('#points-legend').prepend('<h6 class="pointer">' + getSetting('_pointsLegendTitle') + '</h6>');
     if (getSetting('_pointsLegendIcon') != '') {
-      $('#points-legend h6').prepend('<span class="legend-icon"><i class="fa '
+      $('#points-legend h6').prepend('<span class="legend-icon"><i class="fas '
         + getSetting('_pointsLegendIcon') + '"></i></span>');
     }
 
@@ -280,7 +280,7 @@ $(window).on('load', function() {
   allTextLabels = [];
 
   function loadAllGeojsons(p) {
-    if (p < polygonSettings.length && getPolygonSetting(p, '_polygonsGeojsonURL')) {
+    if (p < polygonSettings.length && getPolygonSetting(p, '_polygonsGeojsonURL').trim()) {
       // Pre-process popup properties to be used in onEachFeature below
       polygon = p;
       var popupProperties = getPolygonSetting(p, '_popupProp').split(';');
@@ -288,7 +288,7 @@ $(window).on('load', function() {
       allPopupProperties.push(popupProperties);
 
       // Load geojson
-      $.getJSON(getPolygonSetting(p, '_polygonsGeojsonURL'), function(data) {
+      $.getJSON(getPolygonSetting(p, '_polygonsGeojsonURL').trim(), function(data) {
           geoJsonLayer = L.geoJson(data, {
             onEachFeature: onEachFeature,
             pointToLayer: function(feature, latlng) {
@@ -308,7 +308,7 @@ $(window).on('load', function() {
   function processAllPolygons() {
     var p = 0;  // polygon sheet
 
-    while (p < polygonSettings.length && getPolygonSetting(p, '_polygonsGeojsonURL')) {
+    while (p < polygonSettings.length && getPolygonSetting(p, '_polygonsGeojsonURL').trim()) {
       isNumerical = [];
       divisors = [];
       colors = [];
@@ -405,7 +405,7 @@ $(window).on('load', function() {
     }
 
     // Generate polygon labels layers
-    for (i in allTextLabels) {
+    for (var i in allTextLabels) {
       var g = L.featureGroup(allTextLabels[i]);
       allTextLabelsLayers.push(g);
     }
@@ -459,7 +459,9 @@ $(window).on('load', function() {
     // If no scale exists: hide the legend. Ugly temporary fix.
     // Can't use 'hide' because it is later toggled
     if (allDivisors[p][z] == '') {
-      $('.polygons-legend' + p).find('.polygons-legend-scale').css({'margin': '0px', 'padding': '0px', 'border': '0px solid'});
+      $('.polygons-legend' + p).find('.polygons-legend-scale').css(
+        {'margin': '0px', 'padding': '0px', 'border': '0px solid'}
+      );
       return;
     }
 
@@ -469,11 +471,11 @@ $(window).on('load', function() {
     var from, to, isNum, color;
 
     for (var i = 0; i < allDivisors[p][z].length; i++) {
-      isNum = allIsNumerical[p][z];
-      from = allDivisors[p][z][i];
-      to = allDivisors[p][z][i+1];
+      var isNum = allIsNumerical[p][z];
+      var from = allDivisors[p][z][i];
+      var to = allDivisors[p][z][i+1];
 
-      color = getColor(from);
+      var color = getColor(from);
       from = from ? comma(from) : from;
       to = to ? comma(to) : to;
 
@@ -494,8 +496,6 @@ $(window).on('load', function() {
    */
   function polygonStyle(feature) {
     var value = feature.properties[allPolygonLayers[polygon][layer][0].trim()];
-
-    var style = {};
 
     if (feature.geometry.type == 'Point') {
       return {  // Point style
@@ -573,16 +573,17 @@ $(window).on('load', function() {
 
     layer.bindPopup(info);
 
+    
     // Add polygon label if needed
-    if (getPolygonSetting(polygon, '_polygonLabel') != '') {
+    if (!allTextLabels[polygon]) { allTextLabels.push([]) }
+
+    if (getPolygonSetting(polygon, '_polygonLabel') !== '') {
       var myTextLabel = L.marker(polylabel(layer.feature.geometry.coordinates, 1.0).reverse(), {
         icon: L.divIcon({
           className: 'polygon-label' + polygon + ' polygon-label',
           html: feature.properties[getPolygonSetting(polygon, '_polygonLabel')],
         })
       });
-
-      if (!allTextLabels[polygon]) {allTextLabels.push([]);}
       allTextLabels[polygon].push(myTextLabel);
     }
   }
@@ -600,28 +601,19 @@ $(window).on('load', function() {
   /**
    * Here all data processing from the spreadsheet happens
    */
-  function onMapDataLoad() {
-    var options = mapData.sheets(constants.optionsSheetName).elements;
-    createDocumentSettings(options);
+  function onMapDataLoad(options, points, polylines) {
 
-    createPolygonSettings(mapData.sheets(constants.polygonsSheetName).elements);
-    i = 1;
-    while (mapData.sheets(constants.polygonsSheetName + i)) {
-      createPolygonSettings(mapData.sheets(constants.polygonsSheetName + i).elements);
-      i++;
-      polygonSheets++;
-    }
+    createDocumentSettings(options);
 
     document.title = getSetting('_mapTitle');
     addBaseMap();
 
     // Add point markers to the map
-    var points = mapData.sheets(constants.pointsSheetName);
     var layers;
     var group = '';
-    if (points && points.elements.length > 0) {
-      layers = determineLayers(points.elements);
-      group = mapPoints(points.elements, layers);
+    if (points && points.length > 0) {
+      layers = determineLayers(points);
+      group = mapPoints(points, layers);
     } else {
       completePoints = true;
     }
@@ -629,15 +621,15 @@ $(window).on('load', function() {
     centerAndZoomMap(group);
 
     // Add polylines
-    var polylines = mapData.sheets(constants.polylinesSheetName);
-    if (polylines && polylines.elements.length > 0) {
-      processPolylines(polylines.elements);
+    if (polylines && polylines.length > 0) {
+      processPolylines(polylines);
     } else {
       completePolylines = true;
     }
 
     // Add polygons
-    if (getPolygonSetting(0, '_polygonsGeojsonURL')) {
+    if (getPolygonSetting(0, '_polygonsGeojsonURL')
+      && getPolygonSetting(0, '_polygonsGeojsonURL').trim()) {
       loadAllGeojsons(0);
     } else {
       completePolygons = true;
@@ -693,11 +685,12 @@ $(window).on('load', function() {
     changeAttribution();
 
     // Append icons to categories in markers legend
-    $('#points-legend form label span').each(function(i) {
-      var legendIcon = (markerColors[i].indexOf('.') > 0)
-        ? '<img src="' + markerColors[i] + '" class="markers-legend-icon">'
-        : '&nbsp;<i class="fa fa-map-marker" style="color: '
-          + markerColors[i]
+    $('#points-legend label span').each(function(i) {
+      var g = $(this).text().trim();
+      var legendIcon = (group2color[ g ].indexOf('.') > 0)
+        ? '<img src="' + group2color[ g ] + '" class="markers-legend-icon">'
+        : '&nbsp;<i class="fas fa-map-marker" style="color: '
+          + group2color[ g ]
           + '"></i>';
       $(this).prepend(legendIcon);
     });
@@ -707,13 +700,13 @@ $(window).on('load', function() {
 
     function showMap() {
       if (completePoints && completePolylines && completePolygons) {
-        $('.ladder h6').append('<span class="legend-arrow"><i class="fa fa-chevron-down"></i></span>');
+        $('.ladder h6').append('<span class="legend-arrow"><i class="fas fa-chevron-down"></i></span>');
         $('.ladder h6').addClass('minimize');
 
         for (i in allPolygonLegends) {
           if (getPolygonSetting(i, '_polygonsLegendIcon') != '') {
             $('.polygons-legend' + i + ' h6').prepend(
-              '<span class="legend-icon"><i class="fa ' + getPolygonSetting(i, '_polygonsLegendIcon') + '"></i></span>');
+              '<span class="legend-icon"><i class="fas ' + getPolygonSetting(i, '_polygonsLegendIcon') + '"></i></span>');
           }
         }
 
@@ -733,7 +726,7 @@ $(window).on('load', function() {
           }
         });
 
-        $('.ladder h6').get(0).click();
+        $('.ladder h6').first().click();
 
         $('#map').css('visibility', 'visible');
         $('.loader').hide();
@@ -747,6 +740,20 @@ $(window).on('load', function() {
       } else {
         setTimeout(showMap, 50);
       }
+    }
+
+    // Add Google Analytics if the ID exists
+    var ga = getSetting('_googleAnalytics');
+    console.log(ga)
+    if ( ga && ga.length >= 10 ) {
+      var gaScript = document.createElement('script');
+      gaScript.setAttribute('src','https://www.googletagmanager.com/gtag/js?id=' + ga);
+      document.head.appendChild(gaScript);
+  
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', ga);
     }
   }
 
@@ -810,6 +817,7 @@ $(window).on('load', function() {
           line = L.polyline(latlng, {
             color: (p[index]['Color'] == '') ? 'grey' : p[index]['Color'],
             weight: trySetting('_polylinesWeight', 2),
+            pane: 'shadowPane'
           }).addTo(map);
 
           if (p[index]['Description'] && p[index]['Description'] != '') {
@@ -829,7 +837,7 @@ $(window).on('load', function() {
             if (getSetting('_polylinesLegendTitle') != '') {
               $('#polylines-legend').prepend('<h6 class="pointer">' + getSetting('_polylinesLegendTitle') + '</h6>');
               if (getSetting('_polylinesLegendIcon') != '') {
-                $('#polylines-legend h6').prepend('<span class="legend-icon"><i class="fa '
+                $('#polylines-legend h6').prepend('<span class="legend-icon"><i class="fas '
                   + getSetting('_polylinesLegendIcon') + '"></i></span>');
               }
 
@@ -859,7 +867,7 @@ $(window).on('load', function() {
     // This is a pop-up for mobile device
     if (window.matchMedia("only screen and (max-width: 760px)").matches) {
       $('body').append('<div id="mobile-intro-popup"><p>' + info +
-        '</p><div id="mobile-intro-popup-close"><i class="fa fa-times"></i></div></div>');
+        '</p><div id="mobile-intro-popup-close"><i class="fas fa-times"></i></div></div>');
 
       $('#mobile-intro-popup-close').click(function() {
         $("#mobile-intro-popup").hide();
@@ -894,7 +902,7 @@ $(window).on('load', function() {
    */
   function changeAttribution() {
     var attributionHTML = $('.leaflet-control-attribution')[0].innerHTML;
-    var credit = 'View <a href="' + '123' + '" target="_blank">123</a>';
+    var credit = 'View <a href="' + googleDocURL + '" target="_blank">data</a>';
     var name = getSetting('_authorName');
     var url = getSetting('_authorURL');
 
@@ -907,8 +915,8 @@ $(window).on('load', function() {
       credit += ' | ';
     }
 
-    credit += 'View <a href="' + getSetting('123') + '">code</a>';
-    if (getSetting('123')) credit += ' by ' + getSetting('123');
+    credit += 'View <a href="' + getSetting('_githubRepo') + '">code</a>';
+    if (getSetting('_codeCredit')) credit += ' by ' + getSetting('_codeCredit');
     credit += ' with ';
     $('.leaflet-control-attribution')[0].innerHTML = credit + attributionHTML;
   }
@@ -940,7 +948,10 @@ $(window).on('load', function() {
    * getSetting(s) is equivalent to documentSettings[constants.s]
    */
   function getPolygonSetting(p, s) {
-    return polygonSettings[p][constants[s]];
+    if (polygonSettings[p]) {
+      return polygonSettings[p][constants[s]];
+    }
+    return false;
   }
 
   /**
@@ -961,7 +972,7 @@ $(window).on('load', function() {
     return s;
   }
 
-   /**
+  /**
    * Triggers the load of the spreadsheet and map creation
    */
    var mapData;
@@ -1089,7 +1100,7 @@ $(window).on('load', function() {
    * {"webpageTitle": "Leaflet Boilerplate", "infoPopupText": "Stuff"}
    */
   function createPolygonSettings(settings) {
-    p = {};
+    var p = {};
     for (var i in settings) {
       var setting = settings[i];
       p[setting.Setting] = setting.Customize;
